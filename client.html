@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>双人五子棋游戏</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+    }
+
+    #board {
+      display: grid;
+      grid-template-columns: repeat(15, 30px);
+      grid-template-rows: repeat(15, 30px);
+      /* gap: 2px; */
+      margin: 20px auto;
+      width: 480px;
+      position: relative;
+      /* 添加相对定位 */
+    }
+
+    .cell {
+      width: 30px;
+      height: 30px;
+      /* background-color: #f0f0f0; 移除背景颜色 */
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      position: relative;
+      /* 添加相对定位 */
+    }
+
+    /* 绘制棋盘线 */
+    .cell::before {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 0;
+      width: 100%;
+      height: 1px;
+      background-color: #000;
+    }
+
+    .cell::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 50%;
+      width: 1px;
+      height: 100%;
+      background-color: #000;
+    }
+
+    /* 移除边缘的重复线条 */
+    /* 移除0行和14行的横线
+    移除0列和14列的竖线 */
+    #board .cell:nth-child(15n + 1),
+    #board .cell:nth-child(15n + 15) {
+      background-color: transparent;
+    }
+
+    #board .cell:nth-child(15n + 1)::before,
+    #board.cell:nth-child(15n + 15)::before,
+    #board.cell:nth-child(n + 1):nth-child(-n + 15)::after,
+    .black {
+      background-color: black;
+    }
+
+    .white {
+      background-color: #117b96;
+    }
+
+    #status {
+      margin-top: 20px;
+    }
+  </style>
+</head>
+
+<body>
+
+  <h1>五子棋游戏</h1>
+  <p id="status">请准备</p>
+  <button id="readyButton">准备</button> <!-- 添加准备按钮 -->
+  <button id="resetButton">重置</button>
+  <div id="board"></div>
+
+  <script>
+    const boardSize = 15;
+    const board = document.getElementById('board');
+    let ws;
+    let playerColor = ''; // 'black' or 'white'
+    let isMyTurn = false;
+
+    // 初始化棋盘
+    document.getElementById('resetButton').addEventListener('click', () => {
+      // 重置棋盘
+      const cells = document.querySelectorAll('.cell');
+      cells.forEach(cell => {
+        cell.classList.remove('black', 'white');
+      });
+      document.getElementById('status').textContent = '请准备';
+      document.getElementById('readyButton').textContent = '准备';
+      const readyButton = document.getElementById('readyButton');
+      readyButton.click();
+
+    });
+    for (let row = 0; row < boardSize; row++) {
+      for (let col = 0; col < boardSize; col++) {
+        const cell = document.createElement('div');
+        cell.classList.add('cell');
+        cell.dataset.row = row;
+        cell.dataset.col = col;
+        cell.addEventListener('click', () => makeMove(row, col));
+        board.appendChild(cell);
+      }
+    }
+
+    // 连接 WebSocket 服务器
+    function connect() {
+      //ws = new WebSocket(''); 服务器地址
+      ws = new WebSocket('ws://localhost:3100');
+      ws.onopen = () => {
+        document.getElementById('status').textContent = '等待对方连接...';
+      };
+
+      ws.onmessage = (event) => {
+        const msg = JSON.parse(event.data);
+        if (msg.color) {
+          playerColor = msg.color;
+          // document.getElementById('status').textContent = `你是 ${playerColor === 'black' ? '黑子' : '白子'}，${playerColor === 'black' ? '你的回合' : '等待对方落子'}`;
+          //document.getElementById('status').textContent = `你是 ${playerColor === 'black'? '黑子' : '白子'}，${playerColor === 'black'? '等待对方落子' : '你的回合'}`; 
+          //
+          if (msg.player == 1) {
+            document.getElementById('status').textContent = `你是黑子，${playerColor === 'black'? '你的回合' : '等待对方落子'}`;
+            //console.log(playerColor);
+            playerColor = 'black';
+
+            isMyTurn = true;
+          } else {
+            document.getElementById('status').textContent = `你是蓝子，${playerColor === 'white'? '等待对方落子' : '你的回合'}`;
+            playerColor = 'white';
+            isMyTurn = true;
+          }
+        } else if (msg.message) {
+
+          document.getElementById('status').textContent = msg.message;
+          if (msg.end == 1) {
+            isMyTurn = false;
+          }
+        } else if (msg.move) {
+          handleOpponentMove(msg.move);
+        }
+      };
+
+      ws.onclose = () => {
+        document.getElementById('status').textContent = '连接已断开，请重新连接。';
+      };
+    }
+
+    // 处理准备按钮点击事件
+    const readyButton = document.getElementById('readyButton');
+    let isReady = false; // 新增一个变量来跟踪准备状态
+    readyButton.addEventListener('click', () => {
+      if (!isReady) {
+        // 准备状态
+        connect();
+        readyButton.textContent = '已准备';
+        isReady = true;
+      } else {
+        // 取消准备状态
+        if (ws) {
+          ws.close(); // 断开连接
+        }
+        document.getElementById('status').textContent = '请准备';
+        readyButton.textContent = '准备';
+        isReady = false;
+      }
+    });
+    //再次点击取消准备
+
+
+    // 发送棋步到服务器
+    function makeMove(row, col) {
+      console.log(isMyTurn, playerColor);
+
+      if (!isMyTurn || playerColor === '') return;
+
+      const cell = document.querySelector(`[data-row="${row}"][data-col="${col}"]`);
+      if (cell.classList.contains('black') || cell.classList.contains('white')) return;
+
+      const move = {
+        row,
+        col,
+        color: playerColor
+      };
+      ws.send(JSON.stringify({
+        move
+      }));
+      document.getElementById('status').textContent = '等待对方落子...'
+      cell.classList.add(playerColor);
+      isMyTurn = false;
+    }
+
+    // 处理对手的移动
+    function handleOpponentMove(move) {
+      const {
+        row,
+        col,
+        color
+      } = move;
+      console.log(move);
+      const cell = document.querySelector(`[data-row="${row}"][data-col="${col}"]`);
+      cell.classList.add(color);
+      document.getElementById('status').textContent = `你的回合`;
+      //如果end=1则为false
+
+      isMyTurn = true;
+    }
+
+    // 移除初始化时的连接调用
+    // connect();
+  </script>
+
+</body>
+
+</html>
