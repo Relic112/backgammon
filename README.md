@@ -1,2 +1,3 @@
 # backgammon
-基于nodejs实现的双人五子棋
+功能单一有待完善
+
